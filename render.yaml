@@ -1,0 +1,39 @@
+# ملف نشر تلقائي لـ Render (Blueprint) — يبني خادم الويب فقط.
+# قاعدة البيانات هذي المرة خارجية (Supabase) عشان تتفادى مشكلة حذف
+# Render لقواعد بياناتها المجانية تلقائيًا بعد 30 يوم من الإنشاء —
+# بينما Supabase توقف (pause) المشروع بعد 7 أيام عدم استخدام بس
+# تحافظ على البيانات، وتقدر تعيد تشغيله بضغطة من لوحة التحكم.
+#
+# الاستخدام: على render.com اختر "New +" → "Blueprint" → اربط هذا المستودع.
+
+services:
+  - type: web
+    name: basira-api
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    startCommand: "gunicorn basira.wsgi:application --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+
+      # خذ هذي القيمة من لوحة تحكم Supabase → Project Settings →
+      # Database → Connection string (اختر "URI") والصقها هنا يدويًا
+      - key: DATABASE_URL
+        sync: false
+
+      # اختياري — خذها من لوحة تحكم Cloudinary → Dashboard بعد إنشاء
+      # حساب مجاني. لو تركتها فاضية، الصور تُخزّن محليًا (وتُمسح كل
+      # إعادة نشر — مقبول للتجربة، مو للاستخدام الفعلي)
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
