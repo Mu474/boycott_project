@@ -170,6 +170,7 @@ STATIC_URL = 'static/'
 # whitenoise يخدّمها من هنا مباشرة
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+WHITENOISE_MANIFEST_STRICT = False
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
