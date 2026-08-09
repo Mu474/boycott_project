@@ -170,7 +170,6 @@ STATIC_URL = 'static/'
 # whitenoise يخدّمها من هنا مباشرة
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-WHITENOISE_MANIFEST_STRICT = False
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -203,8 +202,15 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 STORAGES = {
+    # ⚠️ استخدمنا CompressedStaticFilesStorage (بدون "Manifest") عمدًا،
+    # مو الخيار المعتاد. سبب مو أدائي — النوع اللي فيه "Manifest" يفحص
+    # كل ملفات CSS/JS وقت البناء (collectstatic) بحثًا عن مراجع لملفات
+    # ثانية (زي خرائط المصدر .map)، ومكتبة django-jazzmin فيها ملفات
+    # Bootstrap تشير لملفات .map غير موجودة أصلاً بالمكتبة (خطأ معروف
+    # بمستودعهم الرسمي، Issue #488) — فيوقف البناء بالكامل. هذا النوع
+    # يسوي ضغط (gzip/brotli) بس بدون فحص/تجزئة المراجع، فيتجاوز المشكلة.
     'staticfiles': {
-        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
     },
 }
 
