@@ -214,21 +214,30 @@ STORAGES = {
     },
 }
 
-# ── تخزين دائم للصور عبر Cloudinary (اختياري) ──────────────────
-# لو حدّدت متغيرات Cloudinary بيئيًا (بالاستضافة)، كل صور المنتجات/
-# الجهات/الاقتراحات تُرفع مباشرة لـ Cloudinary بدل القرص المحلي —
-# ضروري لأن أغلب الاستضافات المجانية (Render مثلًا) تمسح أي ملف
-# مرفوع محليًا كل ما يُعاد تشغيل الخادم. محليًا (بدون هذي المتغيرات)
-# يشتغل بالتخزين المحلي العادي كالمعتاد بدون أي تغيير.
-if os.environ.get('CLOUDINARY_CLOUD_NAME'):
-    INSTALLED_APPS += ['cloudinary_storage', 'cloudinary']
-    CLOUDINARY_STORAGE = {
-        'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
-        'API_KEY': os.environ.get('CLOUDINARY_API_KEY'),
-        'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET'),
-    }
+# ── تخزين دائم للصور عبر Supabase Storage (بروتوكول S3) ─────────
+# لو حدّدت متغيرات SUPABASE_S3 بيئيًا (بالاستضافة)، كل صور المنتجات/
+# الجهات/الاقتراحات تُرفع مباشرة لمساحة تخزين Supabase (نفس حسابك
+# المستخدم أصلًا لقاعدة البيانات) بدل القرص المحلي — ضروري لأن أغلب
+# الاستضافات المجانية (Render مثلًا) تمسح أي ملف مرفوع محليًا كل ما
+# يُعاد تشغيل الخادم. محليًا (بدون هذي المتغيرات) يشتغل بالتخزين
+# المحلي العادي كالمعتاد بدون أي تغيير.
+if os.environ.get('SUPABASE_S3_ACCESS_KEY'):
+    INSTALLED_APPS += ['storages']
+    AWS_ACCESS_KEY_ID = os.environ.get('SUPABASE_S3_ACCESS_KEY')
+    AWS_SECRET_ACCESS_KEY = os.environ.get('SUPABASE_S3_SECRET_KEY')
+    AWS_STORAGE_BUCKET_NAME = os.environ.get('SUPABASE_S3_BUCKET', 'media')
+    # شكله: https://<project-ref>.supabase.co/storage/v1/s3
+    AWS_S3_ENDPOINT_URL = os.environ.get('SUPABASE_S3_ENDPOINT')
+    AWS_S3_REGION_NAME = os.environ.get('SUPABASE_S3_REGION', 'eu-west-1')
+    # Supabase (زي أغلب مزوّدي S3 غير AWS نفسها) يحتاج path-style
+    # وتوقيع SigV4 صراحة، عكس الافتراضي المصمّم لـ AWS الحقيقية
+    AWS_S3_ADDRESSING_STYLE = 'path'
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_DEFAULT_ACL = 'public-read'
+    AWS_QUERYSTRING_AUTH = False
+    AWS_S3_FILE_OVERWRITE = False
     STORAGES['default'] = {
-        'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
+        'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
     }
 
 

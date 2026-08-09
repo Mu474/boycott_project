@@ -28,12 +28,16 @@ services:
       - key: DATABASE_URL
         sync: false
 
-      # اختياري — خذها من لوحة تحكم Cloudinary → Dashboard بعد إنشاء
-      # حساب مجاني. لو تركتها فاضية، الصور تُخزّن محليًا (وتُمسح كل
-      # إعادة نشر — مقبول للتجربة، مو للاستخدام الفعلي)
-      - key: CLOUDINARY_CLOUD_NAME
+      # اختياري — لتخزين الصور بشكل دائم عبر Supabase Storage (S3).
+      # خذها من Supabase Dashboard → Project Settings → Storage → S3
+      # Connection، بعد ما تفعّل "S3 protocol" وتنشئ Access Key جديد
+      - key: SUPABASE_S3_ACCESS_KEY
         sync: false
-      - key: CLOUDINARY_API_KEY
+      - key: SUPABASE_S3_SECRET_KEY
         sync: false
-      - key: CLOUDINARY_API_SECRET
+      - key: SUPABASE_S3_ENDPOINT
         sync: false
+      - key: SUPABASE_S3_BUCKET
+        value: media
+      - key: SUPABASE_S3_REGION
+        value: eu-west-1
