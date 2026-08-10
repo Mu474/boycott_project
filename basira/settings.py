@@ -236,6 +236,17 @@ if os.environ.get('SUPABASE_S3_ACCESS_KEY'):
     AWS_DEFAULT_ACL = 'public-read'
     AWS_QUERYSTRING_AUTH = False
     AWS_S3_FILE_OVERWRITE = False
+
+    # ⚠️ مهم: رابط العرض العام لصور Supabase مختلف تمامًا عن رابط S3
+    # المستخدم بالرفع (اللي بأعلى). الرفع يمر عبر /storage/v1/s3،
+    # لكن العرض العام (اللي يفتحه المتصفح/التطبيق كصورة عادية) لازم
+    # يكون عبر /storage/v1/object/public/<bucket>/... — بدون هذا
+    # الإعداد django-storages يبني روابط بصيغة الرفع، والصور ما تظهر.
+    _s3_host = (AWS_S3_ENDPOINT_URL or '').replace('https://', '').replace('http://', '').rstrip('/')
+    if _s3_host.endswith('/storage/v1/s3'):
+        _s3_host = _s3_host[: -len('/storage/v1/s3')]
+    AWS_S3_CUSTOM_DOMAIN = f'{_s3_host}/storage/v1/object/public/{AWS_STORAGE_BUCKET_NAME}'
+
     STORAGES['default'] = {
         'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
     }
