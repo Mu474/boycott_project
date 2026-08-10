@@ -24,4 +24,7 @@ class SuggestionSerializer(serializers.ModelSerializer):
 class SuggestionUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Suggestion
-        fields = ['status', 'reviewed_by']
+        # أضفنا target_id هنا — قبل كذا ما كان مسموح تحديثه، فلما نوافق على
+        # اقتراح وننشئ منتج/جهة فعليًا، ما كان فيه طريقة نربط الاقتراح
+        # بالعنصر الجديد اللي انولد منه.
+        fields = ['status', 'reviewed_by', 'target_id']
