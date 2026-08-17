@@ -15,7 +15,8 @@ class ProductListView(APIView):
         return [IsAdminUser()]
 
     def get(self, request):
-        products = Product.objects.all()
+        # نفس إصلاح الجهات — يمنع استعلام منفصل لكل تصنيف/جهة لكل منتج
+        products = Product.objects.select_related('category', 'entity').all()
 
         status_filter = request.query_params.get('status')
         if status_filter in ['boycott', 'caution', 'alternative']:

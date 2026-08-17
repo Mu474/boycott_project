@@ -202,6 +202,14 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 STORAGES = {
+    # مفتاح 'default' لازم يكون موجود دائمًا (Django 5.1+ يتطلبه) —
+    # هذا هو تخزين الملفات المحلي العادي (نفس القرص)، ويُستبدل تلقائيًا
+    # بـ Supabase S3 أدناه لو المتغيرات البيئية موجودة. بدون هذا المفتاح
+    # أي حفظ لصورة (منتج/جهة/استيراد جماعي) ينهار فورًا بخطأ
+    # InvalidStorageError، حتى لو كنت شغّال محليًا بدون S3 أصلاً.
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
     # ⚠️ استخدمنا CompressedStaticFilesStorage (بدون "Manifest") عمدًا،
     # مو الخيار المعتاد. سبب مو أدائي — النوع اللي فيه "Manifest" يفحص
     # كل ملفات CSS/JS وقت البناء (collectstatic) بحثًا عن مراجع لملفات

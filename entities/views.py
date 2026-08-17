@@ -28,7 +28,11 @@ class EntityListView(APIView):
         return [IsAdminUser()]
 
     def get(self, request):
-        entities = BusinessEntity.objects.all()
+        # select_related يحوّل الاستعلامات المنفصلة لكل تصنيف/جهة أم
+        # (N+1 queries — مشكلة أداء حقيقية على قاعدة بيانات بعيدة زي
+        # Supabase) لاستعلام SQL واحد فيه JOIN. بدونه، صفحة فيها 900+
+        # جهة كانت تسوي ~1800 استعلام منفصل بدل استعلام واحد.
+        entities = BusinessEntity.objects.select_related('category', 'parent_entity').all()
         filtered = EntityFilter(request.GET, queryset=entities).qs
         serializer = EntityDetailSerializer(filtered, many=True, context={'request': request})
         return Response(serializer.data)

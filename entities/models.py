@@ -12,7 +12,10 @@ class BusinessEntity(models.Model):
     logo = models.ImageField(upload_to='entities/', blank=True, null=True)
     status = models.CharField(max_length=11, choices=STATUS_CHOICES)
     reason = models.TextField(blank=True, null=True)
-    evidence_url = models.URLField(blank=True, null=True)
+    # كان 200 حرف افتراضيًا (حد Django القياسي)، ووجدنا فعليًا روابط
+    # مصادر حقيقية أطول من هذا (مثلاً روابط فيها معرّفات تتبّع طويلة).
+    # وسّعناه بدل ما نقطع أي رابط حقيقي.
+    evidence_url = models.URLField(max_length=500, blank=True, null=True)
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
     parent_entity = models.ForeignKey(
         'self',
