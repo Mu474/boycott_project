@@ -4,16 +4,16 @@
 
 الاستخدام:
     python manage.py import_tfp_dataset
-    python manage.py import_tfp_dataset --fetch-latest   # يجيب أحدث نسخة من GitHub بدل الملف المرفق
-    python manage.py import_tfp_dataset --dry-run         # يعرض وش بيسوي بدون حفظ فعلي بالقاعدة
-    python manage.py import_tfp_dataset --skip-images      # يتخطى تحميل الشعارات (أسرع بكثير)
+    python manage.py import_tfp_dataset --fetch-latest      # يجيب أحدث نسخة من GitHub بدل الملف المرفق
+    python manage.py import_tfp_dataset --dry-run            # يعرض وش بيسوي بدون حفظ فعلي بالقاعدة
+    python manage.py import_tfp_dataset --skip-images        # يتخطى تحميل الشعارات (أسرع بكثير)
+    python manage.py import_tfp_dataset --skip-translation   # يبقي النص إنجليزي بدون ترجمة (أسرع بكثير)
 
 المصدر: https://github.com/TechForPalestine/boycott-israeli-consumer-goods-dataset
 رخصة البيانات: راجع LICENSE بمستودع المصدر قبل الاستخدام التجاري.
 """
 import json
 import re
-import time
 import urllib.request
 
 from django.core.files.base import ContentFile
@@ -28,9 +28,6 @@ DATASET_JSON_URL = (
     "boycott-israeli-consumer-goods-dataset/main/output/json/data.json"
 )
 
-# تصنيفات TechForPalestine (إنجليزي) -> اسم عربي يُعرض بالتطبيق.
-# أي تصنيف من القائمة الرسمية ما هو موجود هنا يُضاف تلقائيًا باسمه
-# الإنجليزي الخام كإجراء احتياطي، حتى ما يوقف الاستيراد.
 CATEGORY_AR = {
     "books": "كتب", "car": "سيارات", "charity": "خيرية", "clothing": "ملابس",
     "cloud": "حوسبة سحابية", "coffee": "قهوة", "commerce": "تجارة إلكترونية",
@@ -66,43 +63,82 @@ def clean_description(desc: str) -> str:
     if not desc:
         return ""
     text = MD_BOLD_RE.sub(r"\1", desc)
-    # نحذف سطور تعريف الحواشي [^1]: https://... من النص المعروض
-    # (بنستخرج أول رابط منها لحقل evidence_url بدل ما يبقى بالنص)
     text = FOOTNOTE_DEF_RE.sub("", text).strip()
     return text
 
 
 def extract_evidence_url(desc: str, website: str = "") -> str:
-    """يستخرج أول رابط مصدر من حواشي الوصف، أو يرجع رابط الموقع الرسمي كبديل."""
     m = FOOTNOTE_DEF_RE.search(desc or "")
     if m:
         return m.group(1)
     return website or ""
 
 
-def build_reason(description: str, reasons: list[str]) -> str:
-    parts = []
-    if reasons:
-        labels = [REASON_LABELS_AR.get(r, r) for r in reasons]
-        parts.append("السبب: " + "، ".join(labels))
-    cleaned = clean_description(description)
-    if cleaned:
-        parts.append(cleaned)
-    return "\n\n".join(parts).strip()
-
-
 class Command(BaseCommand):
     help = "يستورد بيانات الشركات/العلامات التجارية من قاعدة TechForPalestine مباشرة لجدول الجهات"
 
     def add_arguments(self, parser):
-        parser.add_argument("--fetch-latest", action="store_true",
-                             help="يجيب أحدث نسخة من GitHub بدل الملف المحلي المرفق")
-        parser.add_argument("--file", type=str, default=None,
-                             help="مسار ملف data.json محلي (اختياري)")
-        parser.add_argument("--dry-run", action="store_true",
-                             help="يعرض إحصائيات بدون أي تعديل فعلي بقاعدة البيانات")
-        parser.add_argument("--skip-images", action="store_true",
-                             help="يتخطى تحميل الشعارات (أسرع بكثير، تقدر تضيفها لاحقًا يدويًا)")
+        parser.add_argument("--fetch-latest", action="store_true")
+        parser.add_argument("--file", type=str, default=None)
+        parser.add_argument("--dry-run", action="store_true")
+        parser.add_argument("--skip-images", action="store_true")
+        parser.add_argument("--skip-translation", action="store_true",
+                             help="يبقي النص إنجليزي بدون ترجمة للعربي (أسرع بكثير)")
+
+    # ── الترجمة ────────────────────────────────────────────
+    def _get_translator(self):
+        """يحمّل مكتبة الترجمة بشكل كسول — لو مو مثبّتة، يحذّر ويكمل
+        بدون ترجمة بدل ما يوقف الأمر كامل."""
+        try:
+            from deep_translator import GoogleTranslator
+            return GoogleTranslator(source="en", target="ar")
+        except ImportError:
+            self.stdout.write(self.style.WARNING(
+                "مكتبة deep-translator غير مثبّتة — شغّل: pip install deep-translator"
+                " — سيتم تخطي الترجمة."
+            ))
+            return None
+
+    def _translate(self, text: str) -> str:
+        if not text or not self._translator:
+            return text
+        try:
+            # Google Translate (عبر deep-translator) له حد أقصى ~5000 حرف
+            # بالطلب الواحد؛ نقسّم النص الطويل لفقرات ونترجم كل وحدة براحتها
+            chunks = [text[i:i + 4000] for i in range(0, len(text), 4000)] or [text]
+            translated = [self._translator.translate(c) or c for c in chunks]
+            return "\n".join(translated)
+        except Exception:
+            # فشل مؤقت بالاتصال بخدمة الترجمة — نرجّع النص الإنجليزي الأصلي
+            # بدل ما نوقف كامل عملية الاستيراد بسبب سجل واحد
+            return text
+
+    def build_reason(self, description: str, reasons: list[str], translate: bool):
+        """يرجع (reason_ar, reason_en) — النص العربي المُترجم والإنجليزي الأصلي معًا."""
+        cleaned_en = clean_description(description)
+        labels_ar = [REASON_LABELS_AR.get(r, r) for r in (reasons or [])]
+
+        reason_en_parts = []
+        if labels_ar:
+            # نبقي رموز السبب بالإنجليزي الخام بالنسخة الإنجليزية للتوثيق
+            reason_en_parts.append("Reasons: " + ", ".join(reasons))
+        if cleaned_en:
+            reason_en_parts.append(cleaned_en)
+        reason_en = "\n\n".join(reason_en_parts).strip()
+
+        if translate and cleaned_en:
+            translated_desc = self._translate(cleaned_en)
+        else:
+            translated_desc = cleaned_en
+
+        reason_ar_parts = []
+        if labels_ar:
+            reason_ar_parts.append("السبب: " + "، ".join(labels_ar))
+        if translated_desc:
+            reason_ar_parts.append(translated_desc)
+        reason_ar = "\n\n".join(reason_ar_parts).strip()
+
+        return reason_ar, reason_en
 
     # ── تحميل البيانات ────────────────────────────────────────
     def _load_data(self, opts) -> dict:
@@ -113,7 +149,6 @@ class Command(BaseCommand):
             self.stdout.write("جاري تحميل أحدث نسخة من GitHub...")
             with urllib.request.urlopen(DATASET_JSON_URL, timeout=20) as r:
                 return json.loads(r.read().decode("utf-8"))
-        # الملف المرفق افتراضيًا مع هذا الأمر (snapshot محلي، يشتغل بدون إنترنت)
         import os
         bundled = os.path.join(os.path.dirname(__file__), "data", "tfp_dataset.json")
         with open(bundled, encoding="utf-8") as f:
@@ -152,11 +187,8 @@ class Command(BaseCommand):
     def _safe_image_extension(url: str, content_type: str = "") -> str:
         """يستخرج امتداد صورة نظيف وآمن من رابط أو نوع المحتوى (Content-Type).
         لازم يرجع دائمًا امتداد أبجدي رقمي بحت من قائمة معروفة، وإلا Django
-        يرفض اسم الملف كمشكوك فيه (SuspiciousFileOperation) — صار فعليًا
-        بسبب روابط فيها / أو رموز غريبة بعد نقطة الامتداد المفترضة.
-        """
+        يرفض اسم الملف كمشكوك فيه (SuspiciousFileOperation)."""
         valid = {"jpg", "jpeg", "png", "gif", "webp", "bmp"}
-        # ناخذ آخر جزء بالمسار بس (بعد آخر /)، بعيدًا عن أي query/fragment
         path = url.split("?")[0].split("#")[0]
         last_segment = path.rsplit("/", 1)[-1]
         if "." in last_segment:
@@ -176,6 +208,11 @@ class Command(BaseCommand):
         brands = data.get("brands", {})
         dry_run = opts["dry_run"]
         skip_images = opts["skip_images"]
+        translate = not opts["skip_translation"]
+
+        self._translator = self._get_translator() if translate else None
+        if translate and not self._translator:
+            translate = False  # المكتبة غير مثبّتة، رجعنا لوضع بدون ترجمة تلقائيًا
 
         cat_cache: dict = {}
         id_to_entity: dict[str, BusinessEntity] = {}
@@ -189,24 +226,27 @@ class Command(BaseCommand):
                     stats["skipped"] += 1
                     continue
                 category = self._get_category(cat_cache, [], dry_run)
-                reason = build_reason(c.get("description", ""), [])
+                reason_ar, reason_en = self.build_reason(c.get("description", ""), [], translate)
                 entity, created = self._upsert_entity(
-                    name=c["name"], status=status, reason=reason,
+                    name=c["name"], status=status, reason=reason_ar, reason_en=reason_en,
                     evidence_url="", category=category, parent_entity=None,
-                    dry_run=dry_run,
+                    countries="", dry_run=dry_run,
                 )
                 id_to_entity[cid] = entity
                 stats["created" if created else "updated"] += 1
 
-            # المرحلة ٢: العلامات التجارية (brands) — مع ربط الشركة الأم لو موجودة
+            # المرحلة ٢: العلامات التجارية (brands)
             for bid, b in brands.items():
                 status = STATUS_MAP.get(b.get("status"))
                 if not status:
                     stats["skipped"] += 1
                     continue
                 category = self._get_category(cat_cache, b.get("categories") or [], dry_run)
-                reason = build_reason(b.get("description", ""), b.get("reasons") or [])
+                reason_ar, reason_en = self.build_reason(
+                    b.get("description", ""), b.get("reasons") or [], translate
+                )
                 evidence = extract_evidence_url(b.get("description", ""), b.get("website", ""))
+                countries = ",".join(b.get("countries") or [])
 
                 parent = None
                 for sh in (b.get("stakeholders") or []):
@@ -215,9 +255,9 @@ class Command(BaseCommand):
                         break
 
                 entity, created = self._upsert_entity(
-                    name=b["name"], status=status, reason=reason,
+                    name=b["name"], status=status, reason=reason_ar, reason_en=reason_en,
                     evidence_url=evidence, category=category, parent_entity=parent,
-                    dry_run=dry_run,
+                    countries=countries, dry_run=dry_run,
                 )
                 id_to_entity[bid] = entity
                 stats["created" if created else "updated"] += 1
@@ -237,18 +277,20 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"تم! أُنشئ: {stats['created']} | حُدّث: {stats['updated']} | "
             f"تُخُطّي: {stats['skipped']} | شعارات نجحت: {stats['images_ok']} | "
-            f"شعارات فشلت: {stats['images_failed']}"
+            f"شعارات فشلت: {stats['images_failed']} | ترجمة: {'مفعّلة' if translate else 'متخطّاة'}"
         ))
 
-    def _upsert_entity(self, *, name, status, reason, evidence_url, category, parent_entity, dry_run):
-        """يبحث عن جهة بنفس الاسم (غير حساس لحالة الأحرف)؛ يحدّثها لو موجودة، وإلا ينشئها."""
+    def _upsert_entity(self, *, name, status, reason, reason_en, evidence_url,
+                        category, parent_entity, countries, dry_run):
         if dry_run:
             return None, True
         existing = BusinessEntity.objects.filter(name__iexact=name).first()
         if existing:
             existing.status = status
             existing.reason = reason or existing.reason
+            existing.reason_en = reason_en or existing.reason_en
             existing.evidence_url = evidence_url or existing.evidence_url
+            existing.countries = countries or existing.countries
             if category:
                 existing.category = category
             if parent_entity:
@@ -256,7 +298,8 @@ class Command(BaseCommand):
             existing.save()
             return existing, False
         entity = BusinessEntity.objects.create(
-            name=name, status=status, reason=reason,
+            name=name, status=status, reason=reason, reason_en=reason_en,
             evidence_url=evidence_url, category=category, parent_entity=parent_entity,
+            countries=countries,
         )
         return entity, True
