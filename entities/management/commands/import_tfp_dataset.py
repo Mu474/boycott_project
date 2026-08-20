@@ -169,18 +169,49 @@ class Command(BaseCommand):
         cache[name_ar] = cat
         return cat
 
+    def _wikimedia_original_url(self, url: str):
+        """ويكيبيديا صارت ترفض روابط الصور المصغّرة (thumb) بأحجام غير
+        قياسية (خطأ 400: 'Use thumbnail sizes listed on...'). هذي الدالة
+        تحوّل رابط مصغّر زي:
+          .../thumb/0/0f/Name.jpg/180px-Name.jpg
+        لرابط الصورة الأصلية كاملة:
+          .../0/0f/Name.jpg
+        ترجع None لو الرابط مو من نمط ويكيبيديا المصغّر أصلاً."""
+        m = re.match(
+            r"^(https?://upload\.wikimedia\.org/wikipedia/[^/]+)/thumb/"
+            r"([0-9a-f])/([0-9a-f]{2})/([^/]+)/\d+px-[^/]+$",
+            url,
+        )
+        if not m:
+            return None
+        base, d1, d2, filename = m.groups()
+        return f"{base}/{d1}/{d2}/{filename}"
+
+    def _fetch_url_bytes(self, url: str):
+        """تحميل خام لرابط واحد — تُستخدم مرتين: للرابط الأصلي، وكخطة
+        بديلة لرابط ويكيبيديا المُصحَّح لو الأول فشل بنمط thumb المعروف."""
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            return r.read(), r.headers.get("Content-Type", "")
+
     def _download_logo(self, url: str):
         """يرجّع (ملف, None) عند النجاح، أو (None, رسالة الخطأ) عند الفشل —
         بدل ما يبتلع السبب بصمت زي قبل، عشان نقدر نشخّص ليش فشلت صورة معيّنة."""
         if not url:
             return None, "لا يوجد رابط شعار بالبيانات المصدر"
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=8) as r:
-                data = r.read()
-                content_type = r.headers.get("Content-Type", "")
+            data, content_type = self._fetch_url_bytes(url)
         except Exception as e:
-            return None, f"فشل التحميل من المصدر: {type(e).__name__}: {e}"
+            # خطة بديلة: لو الرابط من نمط ويكيبيديا المصغّر المعروف بمشكلة
+            # الـ400، نجرّب رابط الصورة الأصلية قبل ما نستسلم
+            alt_url = self._wikimedia_original_url(url)
+            if alt_url:
+                try:
+                    data, content_type = self._fetch_url_bytes(alt_url)
+                except Exception as e2:
+                    return None, f"فشل التحميل من المصدر (وبديل ويكيبيديا الأصلي): {type(e2).__name__}: {e2}"
+            else:
+                return None, f"فشل التحميل من المصدر: {type(e).__name__}: {e}"
 
         ext = self._safe_image_extension(url, content_type)
         try:
