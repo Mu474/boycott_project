@@ -82,6 +82,9 @@ class Command(BaseCommand):
         parser.add_argument("--file", type=str, default=None)
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--skip-images", action="store_true")
+        parser.add_argument("--force-images", action="store_true",
+                             help="يعيد محاولة رفع الشعار حتى لو الجهة عندها شعار مسجّل مسبقًا "
+                                  "(مفيد لو غيّرت إعدادات التخزين بعد استيراد سابق)")
         parser.add_argument("--skip-translation", action="store_true",
                              help="يبقي النص إنجليزي بدون ترجمة للعربي (أسرع بكثير)")
 
@@ -167,21 +170,23 @@ class Command(BaseCommand):
         return cat
 
     def _download_logo(self, url: str):
+        """يرجّع (ملف, None) عند النجاح، أو (None, رسالة الخطأ) عند الفشل —
+        بدل ما يبتلع السبب بصمت زي قبل، عشان نقدر نشخّص ليش فشلت صورة معيّنة."""
         if not url:
-            return None
+            return None, "لا يوجد رابط شعار بالبيانات المصدر"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=8) as r:
                 data = r.read()
                 content_type = r.headers.get("Content-Type", "")
-        except Exception:
-            return None
+        except Exception as e:
+            return None, f"فشل التحميل من المصدر: {type(e).__name__}: {e}"
 
         ext = self._safe_image_extension(url, content_type)
         try:
-            return ContentFile(data, name=f"import.{ext}")
-        except Exception:
-            return None
+            return ContentFile(data, name=f"import.{ext}"), None
+        except Exception as e:
+            return None, f"فشل بناء ملف الصورة: {type(e).__name__}: {e}"
 
     @staticmethod
     def _safe_image_extension(url: str, content_type: str = "") -> str:
@@ -208,6 +213,7 @@ class Command(BaseCommand):
         brands = data.get("brands", {})
         dry_run = opts["dry_run"]
         skip_images = opts["skip_images"]
+        force_images = opts["force_images"]
         translate = not opts["skip_translation"]
 
         self._translator = self._get_translator() if translate else None
@@ -217,6 +223,10 @@ class Command(BaseCommand):
         cat_cache: dict = {}
         id_to_entity: dict[str, BusinessEntity] = {}
         stats = {"created": 0, "updated": 0, "skipped": 0, "images_ok": 0, "images_failed": 0}
+        # يعدّ كل نوع خطأ تحميل على حدة (مثلاً "HTTPError: 404" أو
+        # "URLError: timed out") — يفيد أكثر من عيّنة صغيرة لما يكون
+        # عدد الفشل كبير، لأنه يوريك النمط الغالب فورًا
+        download_error_types: dict[str, int] = {}
 
         with transaction.atomic():
             # المرحلة ١: الشركات الأم (companies) — بدون parent_entity
@@ -262,13 +272,24 @@ class Command(BaseCommand):
                 id_to_entity[bid] = entity
                 stats["created" if created else "updated"] += 1
 
-                if not skip_images and not dry_run and b.get("logo_url") and entity and not entity.logo:
-                    img = self._download_logo(b["logo_url"])
+                if not skip_images and not dry_run and b.get("logo_url") and entity and (force_images or not entity.logo):
+                    img, download_err = self._download_logo(b["logo_url"])
                     if img:
-                        entity.logo.save(img.name, img, save=True)
-                        stats["images_ok"] += 1
+                        try:
+                            entity.logo.save(img.name, img, save=True)
+                            stats["images_ok"] += 1
+                        except Exception as e:
+                            stats["images_failed"] += 1
+                            if len(stats.setdefault("_upload_errors", [])) < 5:
+                                stats["_upload_errors"].append(f"{entity.name}: {e}")
                     else:
                         stats["images_failed"] += 1
+                        if len(stats.setdefault("_download_errors", [])) < 5:
+                            stats["_download_errors"].append(f"{entity.name} ({b.get('logo_url')}): {download_err}")
+                        # نصنّف بس أول جزء من الرسالة (نوع الخطأ) عشان نجمع
+                        # المتشابه سوا، مو كل رسالة بتفاصيلها الكاملة
+                        err_key = (download_err or "غير معروف").split(":")[0].strip()
+                        download_error_types[err_key] = download_error_types.get(err_key, 0) + 1
 
             if dry_run:
                 self.stdout.write(self.style.WARNING("وضع dry-run — بالغاء أي تعديل فعلي (rollback)"))
@@ -279,6 +300,19 @@ class Command(BaseCommand):
             f"تُخُطّي: {stats['skipped']} | شعارات نجحت: {stats['images_ok']} | "
             f"شعارات فشلت: {stats['images_failed']} | ترجمة: {'مفعّلة' if translate else 'متخطّاة'}"
         ))
+        if stats.get("_upload_errors"):
+            self.stdout.write(self.style.ERROR("عيّنة من أخطاء رفع الصور لـ Supabase (أول 5):"))
+            for err in stats["_upload_errors"]:
+                self.stdout.write(self.style.ERROR(f"  - {err}"))
+
+        if download_error_types:
+            self.stdout.write(self.style.WARNING("تصنيف أخطاء تحميل الشعارات من مصدرها (كل الـ311 مو بس عيّنة):"))
+            for err_type, count in sorted(download_error_types.items(), key=lambda x: -x[1]):
+                self.stdout.write(self.style.WARNING(f"  - {err_type}: {count} مرة"))
+        if stats.get("_download_errors"):
+            self.stdout.write(self.style.WARNING("عيّنة من أخطاء التحميل الفعلية (أول 5):"))
+            for err in stats["_download_errors"]:
+                self.stdout.write(self.style.WARNING(f"  - {err}"))
 
     def _upsert_entity(self, *, name, status, reason, reason_en, evidence_url,
                         category, parent_entity, countries, dry_run):
