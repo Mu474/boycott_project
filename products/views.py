@@ -113,10 +113,18 @@ class ProductAlternativesView(APIView):
             product = Product.objects.get(pk=pk)
         except Product.DoesNotExist:
             return Response({'error': 'المنتج غير موجود'}, status=status.HTTP_404_NOT_FOUND)
-        alternatives = Product.objects.filter(
-            category=product.category,
-            status='alternative'
-        ).exclude(pk=pk)
+
+        # نفس منطق الجهات — "أخرى" تصنيف عام ما يعني تشابه حقيقي،
+        # فمطابقته حرفيًا تعطي بدائل غير منطقية
+        if product.category.name == 'أخرى':
+            alternatives = Product.objects.filter(
+                status='alternative'
+            ).exclude(pk=pk).order_by('?')[:10]
+        else:
+            alternatives = Product.objects.filter(
+                category=product.category,
+                status='alternative'
+            ).exclude(pk=pk)
         serializer = ProductSerializer(alternatives, many=True, context={'request': request})
         return Response(serializer.data)
 
