@@ -126,10 +126,21 @@ class EntityAlternativesView(APIView):
             entity = BusinessEntity.objects.get(pk=pk)
         except BusinessEntity.DoesNotExist:
             return Response({'error': 'الجهة غير موجودة'}, status=status.HTTP_404_NOT_FOUND)
-        alternatives = BusinessEntity.objects.filter(
-            category=entity.category,
-            status='alternative'
-        ).exclude(pk=pk)
+
+        # "أخرى" تصنيف عام يجمع مئات الجهات المختلفة تمامًا (بسبب نقص
+        # بيانات التصنيف بمصدر الاستيراد الخارجي) — مطابقته حرفيًا
+        # تنتج بدائل عشوائية غير منطقية (شركة سيارات كبديل لشركة أزياء
+        # مثلاً). لما يكون تصنيف الجهة "أخرى"، نرجع بدائل عامة بدل
+        # مطابقة مضلّلة توحي بعلاقة فعلية غير موجودة.
+        if entity.category.name == 'أخرى':
+            alternatives = BusinessEntity.objects.filter(
+                status='alternative'
+            ).exclude(pk=pk).order_by('?')[:10]
+        else:
+            alternatives = BusinessEntity.objects.filter(
+                category=entity.category,
+                status='alternative'
+            ).exclude(pk=pk)
         serializer = EntityMinimalSerializer(alternatives, many=True, context={'request': request})
         return Response(serializer.data)
 
