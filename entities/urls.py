@@ -3,7 +3,8 @@ from .views import (
     EntityListView, EntityDetailView,
     EntitySubsidiariesView, EntityProductsView,
     EntityAlternativesView, EntityTopBoycottedView,
-    EntityRandomAlternativesView
+    EntityRandomAlternativesView,
+    EntityTreeView, EntityAncestorsView
 )
 
 urlpatterns = [
@@ -14,4 +15,6 @@ urlpatterns = [
     path('<int:pk>/subsidiaries/', EntitySubsidiariesView.as_view(), name='entity-subsidiaries'),
     path('<int:pk>/products/', EntityProductsView.as_view(), name='entity-products'),
     path('<int:pk>/alternatives/', EntityAlternativesView.as_view(), name='entity-alternatives'),
+    path('<int:pk>/tree/', EntityTreeView.as_view(), name='entity-tree'),
+    path('<int:pk>/ancestors/', EntityAncestorsView.as_view(), name='entity-ancestors'),
 ]
