@@ -2,7 +2,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAdminUser
-from django.db.models import ProtectedError
+from django.db.models import ProtectedError, Count
 from django.db import models as db_models
 from .models import BusinessEntity
 from .serializers import EntitySerializer, EntityDetailSerializer, EntityMinimalSerializer
@@ -10,13 +10,23 @@ from products.serializers import ProductSerializer
 from .filters import EntityFilter
 
 
-def cascade_status(entity_id, new_status):
+def cascade_status(entity_id, new_status, visited=None):
     from entities.models import BusinessEntity
     from products.models import Product
+
+    # حماية دفاعية: لو وُجدت حلقة دائرية بالبيانات (رغم منعها الآن عند
+    # الحفظ بـ EntitySerializer.validate)، نوقف الانتشار هنا بدل ما ندخل
+    # بـ recursion لا نهائي يكرش السيرفر
+    if visited is None:
+        visited = set()
+    if entity_id in visited:
+        return
+    visited.add(entity_id)
+
     children = BusinessEntity.objects.filter(parent_entity_id=entity_id)
     children.update(status=new_status)
     for child in children:
-        cascade_status(child.id, new_status)
+        cascade_status(child.id, new_status, visited)
     Product.objects.filter(entity_id=entity_id).update(status=new_status)
 
 
@@ -168,4 +178,87 @@ class EntityRandomAlternativesView(APIView):
             status='alternative'
         ).order_by('?')[:10]
         serializer = EntityMinimalSerializer(entities, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class EntityTreeView(APIView):
+    """
+    يرجّع الهيكل التجاري كاملًا لجهة معيّنة (كل أبنائها بكل المستويات
+    دفعة وحدة)، بدل ما تضطر الواجهة تسوي استدعاء API منفصل لكل مستوى.
+
+    نحمّل كل الجهات باستعلام SQL واحد ثم نبني الشجرة في بايثون —
+    نفس فلسفة select_related الموجودة بـ EntityListView لتفادي N+1،
+    لكن هنا حتى أعمق من مستوى واحد.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, pk):
+        try:
+            pk = int(pk)
+        except (TypeError, ValueError):
+            return Response({'error': 'معرّف غير صالح'}, status=status.HTTP_400_BAD_REQUEST)
+
+        entities = list(
+            BusinessEntity.objects.annotate(product_count=Count('product'))
+        )
+        entities_by_id = {e.id: e for e in entities}
+
+        if pk not in entities_by_id:
+            return Response({'error': 'الجهة غير موجودة'}, status=status.HTTP_404_NOT_FOUND)
+
+        children_map = {}
+        for e in entities:
+            children_map.setdefault(e.parent_entity_id, []).append(e.id)
+
+        def build(entity_id, visited):
+            # حماية دفاعية من حلقة دائرية باقية بالبيانات (خط دفاع ثانٍ
+            # بعد التحقق عند الحفظ بـ EntitySerializer.validate) — لو
+            # صادفنا جهة زرناها بنفس المسار، نوقف هالفرع بدل ما ندخل
+            # بحلقة لا نهائية تكرش الطلب
+            if entity_id in visited:
+                return None
+            visited = visited | {entity_id}
+
+            e = entities_by_id[entity_id]
+            children = [
+                node for cid in children_map.get(entity_id, [])
+                if (node := build(cid, visited)) is not None
+            ]
+            return {
+                'id': e.id,
+                'name': e.name,
+                'logo': request.build_absolute_uri(e.logo.url) if e.logo else None,
+                'status': e.status,
+                'product_count': e.product_count,
+                'children': children,
+            }
+
+        tree = build(pk, frozenset())
+        return Response(tree)
+
+
+class EntityAncestorsView(APIView):
+    """
+    يرجّع مسار الأجداد من الجذر حتى الأب المباشر لجهة معيّنة (بدون
+    الجهة نفسها) — يُستخدم لعرض "الشركة المالكة → العلامة" (breadcrumb)
+    لما يدخل المستخدم من جهة تابعة مباشرة، بدل ما يبدأ من الجذر.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, pk):
+        try:
+            entity = BusinessEntity.objects.select_related('parent_entity').get(pk=pk)
+        except BusinessEntity.DoesNotExist:
+            return Response({'error': 'الجهة غير موجودة'}, status=status.HTTP_404_NOT_FOUND)
+
+        ancestors = []
+        visited = set()
+        current = entity.parent_entity
+        while current is not None and current.id not in visited:
+            visited.add(current.id)
+            ancestors.append(current)
+            current = current.parent_entity
+
+        ancestors.reverse()  # من الجذر إلى الأب المباشر
+        serializer = EntityMinimalSerializer(ancestors, many=True, context={'request': request})
         return Response(serializer.data)
