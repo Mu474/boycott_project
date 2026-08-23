@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'articles',
     'suggestions',
     'reports',
+    'scans',
 ]
 
 MIDDLEWARE = [
