@@ -13,4 +13,5 @@ urlpatterns = [
     path('api/suggestions/', include('suggestions.urls')),
     path('api/reports/', include('reports.urls')),
     path('api/scans/', include('scans.urls')),
+    path('api/community/', include('community.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

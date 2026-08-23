@@ -22,6 +22,14 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser):
     name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
+
+    # اسم عرض عام اختياري — لازم للترتيب/المجموعات لأن email و name
+    # ما ينفع يظهروا بواجهة عامة (خصوصية). null=True مؤقتًا لأن
+    # المستخدمين الحاليين قبل هذي الإضافة ما عندهم قيمة؛ يبقى بدون
+    # قيمة لحد ما يحدده المستخدم بنفسه من شاشة الحساب، ووقتها بس يظهر
+    # بأي ترتيب عام.
+    username = models.CharField(max_length=30, unique=True, null=True, blank=True)
+
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

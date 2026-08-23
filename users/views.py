@@ -1,13 +1,15 @@
+import re
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .serializers import RegisterSerializer, UserSerializer
-from rest_framework.permissions import IsAdminUser
+from .serializers import RegisterSerializer, UserSerializer, MeSerializer
 from .models import User
-from .serializers import UserSerializer
+
+USERNAME_RE = re.compile(r'^[a-zA-Z0-9_]{3,30}$')
+
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -47,6 +49,34 @@ class LoginView(APIView):
         )
 
 
+class UserMeView(APIView):
+    """
+    الملف الشخصي للمستخدم الحالي (GET) وتحديث اسم المستخدم العام (PATCH).
+    اسم المستخدم شرط أساسي للظهور بأي ترتيب عام (راجع نموذج User) —
+    هذا الـ endpoint هو المكان الوحيد اللي يقدر المستخدم يحدده منه.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(MeSerializer(request.user).data)
+
+    def patch(self, request):
+        username = (request.data.get('username') or '').strip()
+        if not username:
+            return Response({'error': 'اسم المستخدم مطلوب'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not USERNAME_RE.match(username):
+            return Response(
+                {'error': 'اسم المستخدم يجب أن يكون بين 3-30 حرفًا، ويحتوي فقط على حروف إنجليزية وأرقام و_ (بدون مسافات أو رموز)'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if User.objects.filter(username__iexact=username).exclude(pk=request.user.pk).exists():
+            return Response({'error': 'اسم المستخدم هذا مُستخدم مسبقًا'}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.username = username
+        request.user.save(update_fields=['username'])
+        return Response(MeSerializer(request.user).data)
 
 
 class UserListView(APIView):
