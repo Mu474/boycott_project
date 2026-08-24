@@ -11,6 +11,9 @@ class Suggestion(models.Model):
     target_id = models.IntegerField(null=True, blank=True)
     data_json = models.JSONField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    # سبب الرفض — يظهر للمستخدم بإشعاره لو رُفض اقتراحه (راجع
+    # notifications/services.py). اختياري لأن بعض الرفض واضح بدون شرح
+    rejection_reason = models.TextField(blank=True, default='')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     reviewed_by = models.ForeignKey(
     'users.User', on_delete=models.SET_NULL,

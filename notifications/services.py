@@ -1,0 +1,50 @@
+"""
+دوال إنشاء الإشعارات — منطق النص والمحتوى بمكان واحد بدل ما يتكرر
+جوّا views.py لتطبيقَين مختلفين (suggestions و reports). أي تعديل
+لصياغة الإشعارات مستقبلًا يصير هنا بس.
+"""
+from .models import Notification
+
+
+def _target_label(target_type):
+    return {'product': 'منتج', 'entity': 'جهة تجارية'}.get(target_type, 'عنصر')
+
+
+def notify_suggestion_reviewed(suggestion):
+    """
+    يُستدعى بعد ما تتغيّر حالة اقتراح فعليًا لـ approved أو rejected —
+    المسؤولية على المستدعي (suggestions/views.py) يتحقق إن الحالة
+    تغيّرت فعلًا قبل الاستدعاء، عشان ما نكرر نفس الإشعار لو الأدمن حدّث
+    حقل ثاني بالاقتراح بدون تغيير الحالة نفسها.
+    """
+    if suggestion.status == 'approved':
+        Notification.objects.create(
+            user=suggestion.user,
+            notification_type='suggestion_approved',
+            title='تمت الموافقة على اقتراحك 🎉',
+            body=f'اقتراحك بخصوص {_target_label(suggestion.target_type)} تمت الموافقة عليه، وحصلت على نقاط مساهمة.',
+            related_id=suggestion.id,
+        )
+    elif suggestion.status == 'rejected':
+        reason = (suggestion.rejection_reason or '').strip()
+        body = f'تم رفض اقتراحك بخصوص {_target_label(suggestion.target_type)}.'
+        if reason:
+            body += f' السبب: {reason}'
+        Notification.objects.create(
+            user=suggestion.user,
+            notification_type='suggestion_rejected',
+            title='تم رفض اقتراحك',
+            body=body,
+            related_id=suggestion.id,
+        )
+
+
+def notify_report_resolved(report):
+    """يُستدعى بعد ما تتغيّر حالة بلاغ فعليًا لـ resolved (نفس شرط التغيير الفعلي أعلاه)."""
+    Notification.objects.create(
+        user=report.user,
+        notification_type='report_resolved',
+        title='تم حل بلاغك ✅',
+        body='بلاغك تمت مراجعته وحلّه، وحصلت على نقاط مساهمة.',
+        related_id=report.id,
+    )

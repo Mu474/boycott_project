@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from .models import Suggestion
 from .serializers import SuggestionSerializer, SuggestionUpdateSerializer
+from notifications.services import notify_suggestion_reviewed
 
 
 class SuggestionListView(APIView):
@@ -46,8 +47,14 @@ class SuggestionDetailView(APIView):
         suggestion = self.get_object(pk)
         if not suggestion:
             return Response({'error': 'الاقتراح غير موجود'}, status=status.HTTP_404_NOT_FOUND)
+
+        previous_status = suggestion.status
         serializer = SuggestionUpdateSerializer(suggestion, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            # إشعار بس لو الحالة تغيّرت فعليًا لحالة نهائية — لا نكرره لو
+            # الأدمن حدّث حقل ثاني (مثلاً target_id) بدون تغيير status نفسها
+            if previous_status != suggestion.status and suggestion.status in ('approved', 'rejected'):
+                notify_suggestion_reviewed(suggestion)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from .models import Report
 from .serializers import ReportSerializer, ReportUpdateSerializer
+from notifications.services import notify_report_resolved
 
 
 class ReportListView(APIView):
@@ -46,8 +47,12 @@ class ReportDetailView(APIView):
         report = self.get_object(pk)
         if not report:
             return Response({'error': 'البلاغ غير موجود'}, status=status.HTTP_404_NOT_FOUND)
+
+        previous_status = report.status
         serializer = ReportUpdateSerializer(report, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            if previous_status != report.status and report.status == 'resolved':
+                notify_report_resolved(report)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

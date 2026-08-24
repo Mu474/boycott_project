@@ -16,9 +16,9 @@ class SuggestionSerializer(serializers.ModelSerializer):
         model = Suggestion
         fields = [
             'id', 'type', 'target_type', 'target_id',
-            'data_json', 'status', 'user', 'reviewed_by', 'created_at'
+            'data_json', 'status', 'rejection_reason', 'user', 'reviewed_by', 'created_at'
         ]
-        read_only_fields = ['status', 'reviewed_by', 'created_at']
+        read_only_fields = ['status', 'rejection_reason', 'reviewed_by', 'created_at']
 
 
 class SuggestionUpdateSerializer(serializers.ModelSerializer):
@@ -27,4 +27,5 @@ class SuggestionUpdateSerializer(serializers.ModelSerializer):
         # أضفنا target_id هنا — قبل كذا ما كان مسموح تحديثه، فلما نوافق على
         # اقتراح وننشئ منتج/جهة فعليًا، ما كان فيه طريقة نربط الاقتراح
         # بالعنصر الجديد اللي انولد منه.
-        fields = ['status', 'reviewed_by', 'target_id']
+        # rejection_reason جديد — يسمح للأدمن يكتب سبب الرفض وقت الرفض نفسه
+        fields = ['status', 'reviewed_by', 'target_id', 'rejection_reason']

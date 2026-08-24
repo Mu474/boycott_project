@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'reports',
     'scans',
     'community',
+    'notifications',
 ]
 
 MIDDLEWARE = [
