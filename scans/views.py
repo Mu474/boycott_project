@@ -1,8 +1,9 @@
 from django.db import IntegrityError
+from django.db.models import Count
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from products.models import Product
 from .models import ScanHistory
 from .serializers import ScanHistorySerializer
@@ -93,3 +94,28 @@ class ScanHistoryListView(APIView):
         scans = ScanHistory.objects.filter(user=request.user).order_by('-scanned_at')[:200]
         serializer = ScanHistorySerializer(scans, many=True)
         return Response(serializer.data)
+
+
+class ScanStatsView(APIView):
+    """
+    إحصائيات إدارية مجمّعة عن كل المسح بالنظام (مو مستخدم واحد) —
+    endpoint خاص بلوحة التحكم، مو التطبيق. يُستخدم لعرض "أكثر
+    المنتجات مسحًا" بالداشبورد.
+    """
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        top_products = (
+            ScanHistory.objects.filter(product__isnull=False)
+            .values('product_id', 'product__name')
+            .annotate(scan_count=Count('id'))
+            .order_by('-scan_count')[:10]
+        )
+        return Response({
+            'total_scans': ScanHistory.objects.count(),
+            'not_found_scans': ScanHistory.objects.filter(found=False).count(),
+            'top_products': [
+                {'product_id': p['product_id'], 'name': p['product__name'], 'count': p['scan_count']}
+                for p in top_products
+            ],
+        })

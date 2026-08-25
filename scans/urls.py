@@ -1,7 +1,8 @@
 from django.urls import path
-from .views import ScanHistorySyncView, ScanHistoryListView
+from .views import ScanHistorySyncView, ScanHistoryListView, ScanStatsView
 
 urlpatterns = [
     path('', ScanHistoryListView.as_view(), name='scan-history-list'),
     path('sync/', ScanHistorySyncView.as_view(), name='scan-history-sync'),
+    path('stats/', ScanStatsView.as_view(), name='scan-stats'),
 ]
