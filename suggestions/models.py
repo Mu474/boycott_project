@@ -10,6 +10,11 @@ class Suggestion(models.Model):
     target_type = models.CharField(max_length=10, choices=TARGET_CHOICES)
     target_id = models.IntegerField(null=True, blank=True)
     data_json = models.JSONField()
+    # صورة مرفقة فعلية على السيرفر (اختيارية) — قبل هذا الحقل، التطبيق
+    # كان "يرسل" الصورة بس بحفظ مسارها المحلي بالجهاز كنص جوّا data_json
+    # (image_path)، وهذا عمليًا ما يوصل السيرفر إطلاقًا ولا ينفع لأي حد
+    # غير صاحب الجهاز نفسه لحظة الاختيار. هذا الحقل يستقبل الملف الحقيقي.
+    image = models.ImageField(upload_to='suggestions/', null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     # سبب الرفض — يظهر للمستخدم بإشعاره لو رُفض اقتراحه (راجع
     # notifications/services.py). اختياري لأن بعض الرفض واضح بدون شرح

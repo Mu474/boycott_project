@@ -16,7 +16,7 @@ class SuggestionSerializer(serializers.ModelSerializer):
         model = Suggestion
         fields = [
             'id', 'type', 'target_type', 'target_id',
-            'data_json', 'status', 'rejection_reason', 'user', 'reviewed_by', 'created_at'
+            'data_json', 'image', 'status', 'rejection_reason', 'user', 'reviewed_by', 'created_at'
         ]
         read_only_fields = ['status', 'rejection_reason', 'reviewed_by', 'created_at']
 
