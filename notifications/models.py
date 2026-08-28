@@ -15,6 +15,8 @@ class Notification(models.Model):
         ('suggestion_approved', 'اقتراح مقبول'),
         ('suggestion_rejected', 'اقتراح مرفوض'),
         ('report_resolved', 'بلاغ محلول'),
+        ('post_published', 'منشور مجتمعي مقبول'),
+        ('post_rejected', 'منشور مجتمعي مرفوض'),
         ('general', 'عام'),
     ]
 

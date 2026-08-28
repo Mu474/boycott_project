@@ -2,7 +2,10 @@ from django.db import models
 from users.models import User
 
 class Report(models.Model):
-    TARGET_CHOICES = [('product', 'منتج'), ('entity', 'جهة')]
+    # 'community_post' جديد — تعميم سليم مو حشر قسري: target_type/
+    # target_id أصلًا مصمّمان بشكل عام (مرجع بولي-مورفيك بسيط)، عكس
+    # Suggestion اللي له سلوك اعتماد محدّد (إنشاء سجل)
+    TARGET_CHOICES = [('product', 'منتج'), ('entity', 'جهة'), ('community_post', 'منشور مجتمعي')]
     STATUS_CHOICES = [('pending', 'قيد المراجعة'), ('resolved', 'تم الحل')]
     # نوع البلاغ — يحدد إذا كان مرتبط بمنتج/جهة معيّنة، أو بلاغ عام
     # (مشكلة تقنية بالتطبيق، اقتراح تحسين، أو أي شيء ثاني)
@@ -16,7 +19,7 @@ class Report(models.Model):
 
     # اختياريان الآن — البلاغ العام (تقني/أخرى) ما يحتاج يكون مرتبط
     # بمنتج أو جهة معيّنة أصلاً
-    target_type = models.CharField(max_length=10, choices=TARGET_CHOICES, null=True, blank=True)
+    target_type = models.CharField(max_length=20, choices=TARGET_CHOICES, null=True, blank=True)
     target_id = models.IntegerField(null=True, blank=True)
 
     # اسم المنتج/الجهة وقت الإبلاغ — يُحفظ من التطبيق مباشرة، حتى ما

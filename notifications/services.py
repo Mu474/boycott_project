@@ -48,3 +48,27 @@ def notify_report_resolved(report):
         body='بلاغك تمت مراجعته وحلّه، وحصلت على نقاط مساهمة.',
         related_id=report.id,
     )
+
+
+def notify_post_reviewed(post):
+    """يُستدعى بعد ما تتغيّر حالة منشور مجتمعي فعليًا لـ published أو rejected."""
+    if post.status == 'published':
+        Notification.objects.create(
+            user=post.user,
+            notification_type='post_published',
+            title='تم نشر مساهمتك 🎉',
+            body=f'منشورك "{post.title}" صار ظاهر بموجز المجتمع.',
+            related_id=post.id,
+        )
+    elif post.status == 'rejected':
+        reason = (post.rejection_reason or '').strip()
+        body = f'منشورك "{post.title}" ما تمت الموافقة عليه.'
+        if reason:
+            body += f' السبب: {reason}'
+        Notification.objects.create(
+            user=post.user,
+            notification_type='post_rejected',
+            title='لم تتم الموافقة على منشورك',
+            body=body,
+            related_id=post.id,
+        )
