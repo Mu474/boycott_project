@@ -1,73 +1,109 @@
 """
-حساب النقاط — مقصود إنه دايمًا ديناميكي (بدون حقل points مخزَّن على
-User)، عشان ما يصير تزامن خاطئ بين النقاط المعروضة والأفعال الفعلية.
+حساب النقاط — لسا ديناميكي دايمًا (بدون حقل points مخزَّن على User)،
+لكن بدل إعادة حساب من 3 جداول مختلفة بمنطق مبعثر، المصدر الوحيد الآن
+هو PointTransaction (سجل أحداث، راجع community/models.py للتفصيل).
 
-مصادر النقاط الثلاثة الحالية، وليش أوزانها مختلفة:
-- اقتراح مقبول (10): يمر بمراجعة بشرية فعلية قبل ما يُحتسب — أعلى وزن.
-- بلاغ محلول (5): يمر بمراجعة بشرية أيضًا، لكن جهد أقل من اقتراح.
-- منتج مميّز تم مسحه (1): وزن منخفض عمدًا. صحيح إن السيرفر يتحقق الآن
-  من وجود المنتج فعليًا بقاعدتنا (راجع scans/views.py — barcode
-  lookup سيرفري، ما نثق بأي شيء يرسله العميل عن هوية المنتج)، لكن هذا
-  التحقق لا يثبت إن مسحًا فعليًا حصل بالكاميرا — أي حد يعرف باركود
-  منتج حقيقي (والباركودات أصلًا معلومة للعموم، مو سرية) يقدر يستدعي
-  endpoint المزامنة مباشرة بدون فتح التطبيق إطلاقًا. هذا خطر متبقٍّ
-  حقيقي وواعٍ، مو سهو، ولهذا وزنه صغير جدًا مقارنة بالمصدرين الآخرين.
+هذا الملف هو المكان الوحيد اللي يحدّد "كم نقطة لكل فعل" — أي تغيير
+بوزن مستقبلًا يصير هنا فقط، بدون MIGRATION.
 """
-from django.db.models import Count, F, IntegerField, Q, ExpressionWrapper
-from suggestions.models import Suggestion
-from reports.models import Report
-from scans.models import ScanHistory
+from django.db.models import Sum, IntegerField
+from django.db.models.functions import Coalesce
+from .models import PointTransaction
 
-SUGGESTION_APPROVED_POINTS = 10
-REPORT_RESOLVED_POINTS = 5
-SCAN_DISTINCT_PRODUCT_POINTS = 1
+POINTS_WEIGHTS = {
+    # مراجَعة بشرية فعلية قبل الاحتساب — أعلى وزن
+    'suggestion_approved': 10,
+    # مراجَعة بشرية أيضًا، جهد أقل من اقتراح
+    'report_resolved': 5,
+    # وزن منخفض عمدًا (راجع التعليق التفصيلي بالنسخة القديمة من هذا
+    # الملف بتاريخ المشروع — نفس السبب لسا قائم: لا نثق بأن المسح تم
+    # فعليًا بالكاميرا، بس نتحقق من صحة الباركود سيرفريًا)
+    'distinct_product_scanned': 1,
+    # منشور مجتمعي مرّ بمراجعة إدارية ونُشر — أخف من اقتراح (مراجعة
+    # أبسط)، أثقل من مسح (محتوى فعلي أنتجه المستخدم)
+    'post_published': 3,
+    # تعليق اختاره صاحب السؤال كأفضل إجابة — قيمة معرفية محقَّقة من
+    # طرف آخر (مو من الإدارة)، نفس وزن البلاغ المحلول
+    'comment_best_answer': 5,
+    # نقطة واحدة فقط لكل تفاعل "مفيد" فريد تستلمه — العائق الطبيعي هنا
+    # هو unique_together(user, post) على PostReaction نفسه: التلاعب
+    # يحتاج فعليًا عدة حسابات مستخدمين حقيقية مختلفة، مو حسابًا واحدًا
+    # يكرر التفاعل، فما احتجنا سقف يومي إضافي فوق هذا
+    'post_reaction_received': 1,
+    'comment_reaction_received': 1,
+}
+
+
+def award_points(user, action, reference_type='', reference_id=None):
+    """
+    يمنح نقاط لفعل معيّن — يُستدعى من الـ signals (راجع posts/signals.py،
+    suggestions/signals.py، reports/signals.py، scans/signals.py).
+
+    get_or_create يعتمد على unique_together بالموديل نفسه، فاستدعاء
+    هذي الدالة أكثر من مرة لنفس الحدث (مثلًا save() انطلقت مرتين
+    بالخطأ لسجلّة بنفس الحالة) لا يضاعف النقاط — آمنة للاستدعاء
+    بدون شرط "هل تغيّرت الحالة فعليًا؟" بالـ signal نفسه.
+    """
+    if user is None:
+        return None
+    points = POINTS_WEIGHTS.get(action)
+    if points is None:
+        raise ValueError(f'وزن نقاط غير معرّف للفعل: {action}')
+    transaction, _created = PointTransaction.objects.get_or_create(
+        user=user,
+        action=action,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        defaults={'points': points},
+    )
+    return transaction
+
+
+def revoke_points(user, action, reference_type='', reference_id=None):
+    """يسحب نقاط حدث معيّن — يُستدعى عند إلغاء تفاعل (unlike) مثلًا."""
+    PointTransaction.objects.filter(
+        user=user, action=action, reference_type=reference_type, reference_id=reference_id,
+    ).delete()
 
 
 def calculate_points(user):
     """نقاط مستخدم واحد — يكفي لصفحة "حسابي"."""
-    approved_suggestions = Suggestion.objects.filter(user=user, status='approved').count()
-    resolved_reports = Report.objects.filter(user=user, status='resolved').count()
-    # منتجات مميّزة (distinct) بس — مسح نفس المنتج 100 مرة يساوي مسحه
-    # مرة وحدة بالنقاط، عشان نمنع أبسط شكل تلاعب (تكرار نفس الباركود)
-    distinct_products_scanned = (
-        ScanHistory.objects.filter(user=user, found=True, product__isnull=False)
-        .values('product').distinct().count()
-    )
-    return (
-        approved_suggestions * SUGGESTION_APPROVED_POINTS
-        + resolved_reports * REPORT_RESOLVED_POINTS
-        + distinct_products_scanned * SCAN_DISTINCT_PRODUCT_POINTS
-    )
+    total = PointTransaction.objects.filter(user=user).aggregate(
+        total=Coalesce(Sum('points'), 0, output_field=IntegerField())
+    )['total']
+    return total
 
 
 def annotate_points(user_queryset):
     """
     يضيف حقل points لكل عنصر بقائمة مستخدمين — استعلام SQL واحد فعّال
-    بدل استدعاء calculate_points() لكل مستخدم لحاله (أساسي للترتيب
-    العام حتى يشتغل ORDER BY على مستوى قاعدة البيانات، مو Python).
-
-    distinct=True على الثلاثة Count كلها لازم: بما إن الاستعلام فيه
-    JOIN لثلاث علاقات عكسية مختلفة (suggestion، report، scan_history)
-    بنفس الوقت، بدون distinct=True الأرقام تتضاعف فعليًا بسبب تعدد
-    نتائج الـ JOIN (fan-out) — تحققت من هذا فعليًا بالاختبار، مو افتراض.
+    (تجميع من جدول واحد PointTransaction بدل عدة JOIN على جداول
+    مختلفة كما كان بالنسخة القديمة)، أساسي لقائمة الصدارة (أفضل 1000)
+    حتى يشتغل الترتيب على مستوى قاعدة البيانات، مو Python.
     """
     return user_queryset.annotate(
-        approved_suggestions=Count(
-            'suggestion', filter=Q(suggestion__status='approved'), distinct=True
-        ),
-        resolved_reports=Count(
-            'report', filter=Q(report__status='resolved'), distinct=True
-        ),
-        distinct_products_scanned=Count(
-            'scan_history__product',
-            filter=Q(scan_history__found=True, scan_history__product__isnull=False),
-            distinct=True,
-        ),
-    ).annotate(
-        points=ExpressionWrapper(
-            F('approved_suggestions') * SUGGESTION_APPROVED_POINTS
-            + F('resolved_reports') * REPORT_RESOLVED_POINTS
-            + F('distinct_products_scanned') * SCAN_DISTINCT_PRODUCT_POINTS,
-            output_field=IntegerField(),
+        points=Coalesce(
+            Sum('point_transactions__points'), 0, output_field=IntegerField()
         ),
     )
+
+
+LEVEL_THRESHOLDS = [
+    (500, 'سفير بصيرة'),
+    (300, 'مساهم موثوق'),
+    (150, 'مساهم نشط'),
+    (50, 'مساهم'),
+    (0, 'مبتدئ'),
+]
+
+
+def get_level(points):
+    """
+    مستوى نصي مشتق من النقاط — محسوب ديناميكيًا دائمًا (نفس مبدأ
+    contributor_reputation بـ posts/reputation.py)، بدون أي جدول أو
+    حقل إضافي لتخزينه.
+    """
+    for threshold, label in LEVEL_THRESHOLDS:
+        if points >= threshold:
+            return label
+    return LEVEL_THRESHOLDS[-1][1]

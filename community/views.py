@@ -5,19 +5,27 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from users.models import User
 from .models import Group, GroupMembership
 from .serializers import GroupDetailSerializer
-from .points import annotate_points
+from .points import annotate_points, get_level
+
+# أفضل 1000 — كان 50. القائمة كاملة تُجلب دفعة واحدة (annotate_points
+# يجمّع من PointTransaction بجدول واحد، استعلام SQL واحد بدون N+1)،
+# فرفع الحد لـ 1000 لا يضيف أي تكلفة أداء إضافية تُذكر
+LEADERBOARD_SIZE = 1000
 
 
 class LeaderboardView(APIView):
-    """أفضل 50 فرد — يظهر فيها بس من حدد username (خصوصية، راجع نموذج User)."""
+    """أفضل 1000 فرد — يظهر فيها بس من حدد username (خصوصية، راجع نموذج User)."""
     permission_classes = [AllowAny]
 
     def get(self, request):
         users = annotate_points(
             User.objects.filter(username__isnull=False).exclude(username='')
-        ).order_by('-points')[:50]
+        ).order_by('-points')[:LEADERBOARD_SIZE]
         data = [
-            {'rank': i + 1, 'id': u.id, 'username': u.username, 'points': u.points}
+            {
+                'rank': i + 1, 'id': u.id, 'username': u.username,
+                'points': u.points, 'level': get_level(u.points),
+            }
             for i, u in enumerate(users)
         ]
         return Response(data)

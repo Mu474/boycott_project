@@ -1,5 +1,7 @@
 from django.contrib import admin
-from .models import CommunityPost, PostReaction, AlternativeSuggestion
+from .models import (
+    CommunityPost, PostReaction, PostBookmark, Comment, CommentReaction, AlternativeSuggestion,
+)
 
 
 @admin.register(CommunityPost)
@@ -13,6 +15,23 @@ class CommunityPostAdmin(admin.ModelAdmin):
 @admin.register(PostReaction)
 class PostReactionAdmin(admin.ModelAdmin):
     list_display = ['id', 'user', 'post', 'created_at']
+
+
+@admin.register(PostBookmark)
+class PostBookmarkAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'post', 'created_at']
+
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'post', 'parent_comment', 'is_best_answer', 'status', 'created_at']
+    list_filter = ['status', 'is_best_answer']
+    search_fields = ['body', 'user__email', 'user__username']
+
+
+@admin.register(CommentReaction)
+class CommentReactionAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'comment', 'created_at']
 
 
 @admin.register(AlternativeSuggestion)
