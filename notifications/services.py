@@ -72,3 +72,39 @@ def notify_post_reviewed(post):
             body=body,
             related_id=post.id,
         )
+
+
+def notify_new_comment(comment):
+    """
+    يُستدعى عند إنشاء تعليق جديد (posts/signals.py) — نوعان مختلفان
+    حسب كون التعليق أساسي أو رد:
+    - تعليق أساسي (parent_comment=None) → إشعار لصاحب المنشور
+    - رد (parent_comment موجود) → إشعار لصاحب التعليق الأب، مو صاحب
+      المنشور (هو الشخص المعني فعليًا بالرد)
+
+    ما نُشعر المستخدم بتعليقه على منشوره/رده على تعليقه هو نفسه —
+    فحص user != recipient بالأسفل يمنع هذا بلا داعٍ لأي شرط إضافي
+    بمكان الاستدعاء.
+    """
+    if comment.parent_comment_id:
+        recipient = comment.parent_comment.user
+        if recipient.id == comment.user_id:
+            return
+        Notification.objects.create(
+            user=recipient,
+            notification_type='comment_reply',
+            title='رد جديد على تعليقك 💬',
+            body=f'{comment.user.name} ردّ على تعليقك بمنشور "{comment.post.title}".',
+            related_id=comment.post_id,
+        )
+    else:
+        recipient = comment.post.user
+        if recipient.id == comment.user_id:
+            return
+        Notification.objects.create(
+            user=recipient,
+            notification_type='post_comment',
+            title='تعليق جديد على منشورك 💬',
+            body=f'{comment.user.name} علّق على منشورك "{comment.post.title}".',
+            related_id=comment.post_id,
+        )

@@ -7,9 +7,20 @@ from users.models import User
 
 
 class PostUserSerializer(serializers.ModelSerializer):
+    # المستوى (مبتدئ/مساهم/.../سفير بصيرة) — يظهر الآن جنب اسم صاحب أي
+    # منشور أو تعليق، مو بس بقائمة الصدارة كما كان سابقًا. يُحسب حيًا
+    # (نفس مبدأ get_level بـ community/points.py، بدون أي تخزين)، على
+    # حساب استعلام إضافي واحد لكل مستخدم مختلف يظهر بالقائمة — مقبول
+    # تمامًا بحجم بيانات هذا المشروع، وأبسط بكثير من annotate عبر تطبيقين
+    level = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'name', 'username']
+        fields = ['id', 'name', 'username', 'level']
+
+    def get_level(self, obj):
+        from community.points import calculate_points, get_level
+        return get_level(calculate_points(obj))
 
 
 # أنواع المنشورات اللي تفرض ربطًا إلزاميًا بمنتج أو جهة — 'experience'

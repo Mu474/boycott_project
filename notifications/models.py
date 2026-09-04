@@ -17,6 +17,8 @@ class Notification(models.Model):
         ('report_resolved', 'بلاغ محلول'),
         ('post_published', 'منشور مجتمعي مقبول'),
         ('post_rejected', 'منشور مجتمعي مرفوض'),
+        ('post_comment', 'تعليق على منشورك'),
+        ('comment_reply', 'رد على تعليقك'),
         ('general', 'عام'),
     ]
 

@@ -15,6 +15,14 @@ def award_points_on_publish(sender, instance, **kwargs):
 
 
 @receiver(post_save, sender='posts.Comment')
+def notify_on_new_comment(sender, instance, created, **kwargs):
+    if not created:
+        return
+    from notifications.services import notify_new_comment
+    notify_new_comment(instance)
+
+
+@receiver(post_save, sender='posts.Comment')
 def award_points_on_best_answer(sender, instance, **kwargs):
     if not instance.is_best_answer:
         return
