@@ -44,6 +44,7 @@ class CommunityPostSerializer(serializers.ModelSerializer):
     is_reacted = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
+    report_count = serializers.SerializerMethodField()
 
     class Meta:
         model = CommunityPost
@@ -51,10 +52,10 @@ class CommunityPostSerializer(serializers.ModelSerializer):
             'id', 'user', 'post_type', 'title', 'body',
             'linked_product', 'linked_product_name', 'linked_product_image',
             'linked_entity', 'linked_entity_name', 'linked_entity_image',
-            'image', 'status', 'rejection_reason', 'helpful_count', 'is_reacted',
-            'comment_count', 'is_bookmarked', 'created_at',
+            'image', 'status', 'rejection_reason', 'auto_published', 'helpful_count', 'is_reacted',
+            'comment_count', 'is_bookmarked', 'report_count', 'created_at',
         ]
-        read_only_fields = ['status', 'rejection_reason', 'created_at']
+        read_only_fields = ['status', 'rejection_reason', 'auto_published', 'created_at']
 
     def _absolute(self, url):
         if not url:
@@ -96,6 +97,13 @@ class CommunityPostSerializer(serializers.ModelSerializer):
         if not request or not request.user or not request.user.is_authenticated:
             return False
         return obj.bookmarks.filter(user=request.user).exists()
+
+    def get_report_count(self, obj):
+        # عدد المُبلِّغين المختلفين (مو عدد سجلّات البلاغ) — نفس المنطق
+        # المستخدم بـ reports/signals.py للإخفاء التلقائي، يفيد الأدمن
+        # بلوحة التحكم يشوف ليش منشور معيّن اختفى تلقائيًا
+        from reports.models import Report
+        return Report.objects.filter(target_type='community_post', target_id=obj.id).values('user').distinct().count()
 
     def validate(self, data):
         post_type = data.get('post_type')

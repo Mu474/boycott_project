@@ -51,7 +51,17 @@ class CommunityPostCreateView(APIView):
     def post(self, request):
         serializer = CommunityPostSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save(user=request.user)
+            from community.points import is_trusted_contributor
+            # مستخدم موثوق (راجع is_trusted_contributor) → نشر فوري بدون
+            # انتظار أدمن. هذا هو حل مشكلة "المراجعة المسبقة ما تتوسّع
+            # مع نمو المستخدمين" — حماية المحتوى المنشور تصير تفاعلية
+            # بعدها (بلاغات، راجع reports/signals.py) مو استباقية قبله
+            extra = {'user': request.user}
+            if is_trusted_contributor(request.user):
+                extra['status'] = 'published'
+                extra['auto_published'] = True
+                extra['published_at'] = timezone.now()
+            serializer.save(**extra)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

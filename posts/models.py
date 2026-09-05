@@ -61,6 +61,13 @@ class CommunityPost(models.Model):
     # المراجعة) — يفيد لاحقًا لأي ترتيب/تحليل يعتمد على "متى صار مرئيًا"
     published_at = models.DateTimeField(null=True, blank=True)
 
+    # True لو نُشر تلقائيًا بثقة المستخدم (راجع is_trusted_contributor
+    # بـ community/points.py) بدون مراجعة أدمن، False لو مرّ فعليًا
+    # بمراجعة (سواء لسا pending أو رُوجع من أدمن). فرق مهم للوحة التحكم:
+    # بدونه ما فيه طريقة تفرّق منشور "وافق عليه أدمن" عن "نُشر تلقائيًا
+    # لأن صاحبه موثوق" — كلاهما status='published' بلا هذا الحقل
+    auto_published = models.BooleanField(default=False)
+
     class Meta:
         ordering = ['-created_at']
 
