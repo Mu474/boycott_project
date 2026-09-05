@@ -33,7 +33,7 @@ def auto_hide_on_reports_threshold(sender, instance, created, **kwargs):
     الكامل). الفلترة على الحالة الحالية تمنع "إعادة إخفاء" منشور
     الأدمن خلّاه منشورًا عمدًا بعد ما راجعه فعليًا ووجده سليم.
     """
-    if not created or instance.target_type not in ('community_post', 'comment'):
+    if not created or instance.target_type not in ('community_post', 'comment', 'review'):
         return
     distinct_reporters = Report.objects.filter(
         target_type=instance.target_type, target_id=instance.target_id,
@@ -44,6 +44,9 @@ def auto_hide_on_reports_threshold(sender, instance, created, **kwargs):
     if instance.target_type == 'community_post':
         from posts.models import CommunityPost
         CommunityPost.objects.filter(id=instance.target_id, status='published').update(status='hidden')
-    else:
+    elif instance.target_type == 'comment':
         from posts.models import Comment
         Comment.objects.filter(id=instance.target_id, status='visible').update(status='hidden')
+    else:
+        from reviews.models import Review
+        Review.objects.filter(id=instance.target_id, status='visible').update(status='hidden')

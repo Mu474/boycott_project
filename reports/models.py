@@ -2,13 +2,14 @@ from django.db import models
 from users.models import User
 
 class Report(models.Model):
-    # 'community_post' و'comment' — تعميم سليم مو حشر قسري: target_type/
-    # target_id أصلًا مصمّمان بشكل عام (مرجع بولي-مورفيك بسيط)، عكس
-    # Suggestion اللي له سلوك اعتماد محدّد (إنشاء سجل). 'comment' أُضيف
-    # مع نظام التعليقات الجديد — نفس مبدأ الإبلاغ عن منشور بالضبط
+    # 'community_post' و'comment' و'review' — تعميم سليم مو حشر قسري:
+    # target_type/target_id أصلًا مصمّمان بشكل عام (مرجع بولي-مورفيك
+    # بسيط)، عكس Suggestion اللي له سلوك اعتماد محدّد (إنشاء سجل).
+    # 'review' أُضيف مع نظام التقييمات الجديد (reviews app) — نفس مبدأ
+    # الإبلاغ عن منشور/تعليق بالضبط
     TARGET_CHOICES = [
         ('product', 'منتج'), ('entity', 'جهة'),
-        ('community_post', 'منشور مجتمعي'), ('comment', 'تعليق'),
+        ('community_post', 'منشور مجتمعي'), ('comment', 'تعليق'), ('review', 'تقييم'),
     ]
     STATUS_CHOICES = [('pending', 'قيد المراجعة'), ('resolved', 'تم الحل')]
     # نوع البلاغ — يحدد إذا كان مرتبط بمنتج/جهة معيّنة، أو بلاغ عام

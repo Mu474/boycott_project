@@ -61,10 +61,20 @@ class EntityDetailSerializer(serializers.ModelSerializer):
     """تُستخدم عند العرض (GET) — التصنيف والجهة المالكة متداخلان بالاسم الكامل"""
     category = CategorySerializer(read_only=True)
     parent_entity = EntityMinimalSerializer(read_only=True)
+    average_rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         model = BusinessEntity
         fields = [
             'id', 'name', 'logo', 'status', 'reason',
-            'evidence_url', 'category', 'parent_entity', 'created_at'
+            'evidence_url', 'category', 'parent_entity', 'average_rating', 'review_count', 'created_at'
         ]
+
+    def get_average_rating(self, obj):
+        from django.db.models import Avg
+        result = obj.reviews.filter(status='visible').aggregate(avg=Avg('rating'))['avg']
+        return round(result, 1) if result is not None else None
+
+    def get_review_count(self, obj):
+        return obj.reviews.filter(status='visible').count()
